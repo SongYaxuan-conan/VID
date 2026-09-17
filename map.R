@@ -1,10 +1,8 @@
 setwd("E:\\gbd\\vid\\map")
 
+if (!dir.exists("output_one")) dir.create("output_one")
 
-if (!dir.exists("output")) dir.create("output")
-
-
-packages <- c("ggplot2", "maps", "dplyr", "openxlsx")
+packages <- c("ggplot2", "maps", "dplyr", "openxlsx", "patchwork")
 for (pkg in packages) {
   if (!require(pkg, character.only = TRUE)) {
     install.packages(pkg, dependencies = TRUE)
@@ -12,14 +10,13 @@ for (pkg in packages) {
   }
 }
 
-
 fix_country_names <- function(df){
   
   df$raw_location_name <- as.character(df$location_name)
- 
+  
   df$location_name <- as.character(df$location_name)
   
- 
+  
   df$location_name[df$location_name == 'United States of America'] <- 'USA'
   df$location_name[df$location_name == 'Russian Federation'] <- 'Russia'
   df$location_name[df$location_name == 'United Kingdom'] <- 'UK'
@@ -48,9 +45,7 @@ fix_country_names <- function(df){
   return(df)
 }
 
-
 VI <- read.csv('map2023.csv', header = TRUE, fileEncoding = "UTF-8")
-
 
 VI_65plus <- VI %>%
   filter(age_name %in% c("65-69 years","70-74 years","75-79 years","80+ years")) %>%
@@ -62,15 +57,12 @@ VI_65plus <- VI %>%
     .groups = 'drop'
   )
 
-
 worldData <- map_data('world')
-
 
 inc <- subset(VI_65plus, measure_name == "Incidence")
 inc <- fix_country_names(inc)
 
 total_inc <- full_join(worldData, inc, by=c("region"="location_name"))
-
 
 total_inc <- total_inc %>% mutate(
   val2 = cut(val, 
@@ -80,26 +72,18 @@ total_inc <- total_inc %>% mutate(
   )
 )
 
-
 p_inc <- ggplot() +
   geom_polygon(data=total_inc, aes(long,lat,group=group,fill=val2), color="black", linewidth=0.2) +
   scale_fill_brewer(palette="Reds", na.value = "white") +
   theme_void() +
   labs(fill="Incidence count")
 
-
-print(p_inc)
-ggsave("output/2023_65plus_Incidence.jpg", p_inc, width=12, height=8, dpi=300)
-ggsave("output/2023_65plus_Incidence.tif", p_inc, width=12, height=8, dpi=300)
-
-write.xlsx(inc, "output/2023_65plus_Incidence.xlsx", row.Names=FALSE, fileEncoding = "UTF-8")
-
+write.xlsx(inc, "output_one/2023_65plus_Incidence.xlsx", row.Names=FALSE, fileEncoding = "UTF-8")
 
 dea <- subset(VI_65plus, measure_name == "Deaths")
 dea <- fix_country_names(dea)
 
 total_dea <- full_join(worldData, dea, by=c("region"="location_name"))
-
 
 total_dea <- total_dea %>% mutate(
   val2 = cut(val, 
@@ -109,26 +93,18 @@ total_dea <- total_dea %>% mutate(
   )
 )
 
-
 p_dea <- ggplot() +
   geom_polygon(data=total_dea, aes(long,lat,group=group,fill=val2), color="black", linewidth=0.2) +
   scale_fill_brewer(palette="Greens", na.value = "white") +
   theme_void() +
   labs(fill="Deaths count")
 
-
-print(p_dea)
-ggsave("output/2023_65plus_Deaths.jpg", p_dea, width=12, height=8, dpi=300)
-ggsave("output/2023_65plus_Deaths.tif", p_dea, width=12, height=8, dpi=300)
-
-write.xlsx(dea, "output/2023_65plus_Deaths.xlsx", row.Names=FALSE, fileEncoding = "UTF-8")
-
+write.xlsx(dea, "output_one/2023_65plus_Deaths.xlsx", row.Names=FALSE, fileEncoding = "UTF-8")
 
 dalys <- subset(VI_65plus, measure_name == "DALYs (Disability-Adjusted Life Years)")
 dalys <- fix_country_names(dalys)
 
 total_dalys <- full_join(worldData, dalys, by=c("region"="location_name"))
-
 
 total_dalys <- total_dalys %>% mutate(
   val2 = cut(val, 
@@ -138,23 +114,26 @@ total_dalys <- total_dalys %>% mutate(
   )
 )
 
-
 p_dalys <- ggplot() +
   geom_polygon(data=total_dalys, aes(long,lat,group=group,fill=val2), color="black", linewidth=0.2) +
   scale_fill_brewer(palette="Purples", na.value = "white") +
   theme_void() +
   labs(fill="DALYs")
 
+write.xlsx(dalys, "output_one/2023_65plus_DALYs.xlsx", row.Names=FALSE, fileEncoding = "UTF-8")
 
-print(p_dalys)
-ggsave("output/2023_65plus_DALYs.jpg", p_dalys, width=12, height=8, dpi=300)
-ggsave("output/2023_65plus_DALYs.tif", p_dalys, width=12, height=8, dpi=300)
+combined <- p_inc + p_dea + p_dalys +
+  plot_layout(ncol = 1) +    
+  plot_annotation(tag_levels = 'A') &
+  theme(plot.tag = element_text(size = 18, face = "bold"))
 
-write.xlsx(dalys, "output/2023_65plus_DALYs.xlsx", row.Names=FALSE, fileEncoding = "UTF-8")
+print(combined)
+ggsave("output_one/2023_65plus_combined.jpg", combined, width=12, height=20, dpi=300)
+ggsave("output_one/2023_65plus_combined.tif", combined, width=12, height=20, dpi=300)
 
-
-cat("Done！All saved to the output folder。\n")
+cat("All done. \n")
 cat("list：\n")
-cat("1. 2023_65plus_Incidence.jpg & 2023_65plus_Incidence.xlsx\n")
-cat("2. 2023_65plus_Deaths.jpg & 2023_65plus_Deaths.xlsx \n")
-cat("3. 2023_65plus_DALYs.jpg & 2023_65plus_DALYs.xlsx \n")
+cat("1. 2023_65plus_combined.jpg / 2023_65plus_combined.tif\n")
+cat("2. 2023_65plus_Incidence.xlsx \n")
+cat("3. 2023_65plus_Deaths.xlsx \n")
+cat("4. 2023_65plus_DALYs.xlsx \n")
