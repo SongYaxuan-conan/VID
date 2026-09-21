@@ -1,14 +1,15 @@
 library(ggplot2)
 library(dplyr)
 library(mgcv) 
+library(openxlsx)
 
 
-rate_file <- "E:\\gbd\\vid\\sdi\\1990-2023-rate.csv"
-sdi_file <- "E:\\gbd\\vid\\sdi\\sdi.csv"
+rate_file <- "E:\\gbd\\vid\\sdi\\1990-2023-rate.xlsx"
+sdi_file <- "E:\\gbd\\vid\\sdi\\sdi.xlsx"
 out_path <- "E:\\gbd\\vid\\sdi\\"
 
 
-rate <- read.csv(rate_file, stringsAsFactors = FALSE)
+rate <- read.xlsx(rate_file)
 rate <- rate[rate$year >= 1990 & rate$year <= 2023, ]
 
 rate$metric <- case_when(
@@ -19,7 +20,7 @@ rate$metric <- case_when(
 rate <- rate[, c("location_name", "year", "metric", "val")]
 colnames(rate) <- c("location", "year", "metric", "val")
 
-sdi <- read.csv(sdi_file, stringsAsFactors = FALSE)
+sdi <- read.xlsx(sdi_file)
 sdi <- sdi[, c("location_name", "year_id", "mean_value")]
 colnames(sdi) <- c("location", "year", "sdi")
 sdi <- sdi[sdi$year >= 1990 & sdi$year <= 2023, ]
@@ -69,11 +70,11 @@ plot_fun <- function(data, target, filename){
 
 
 plot_fun(df, "ASIR", "SDI_ASIR.jpg")
-plot_fun(df, "ASIR", "SDI_ASIR.tif")
+plot_fun(df, "ASIR", "SDI_ASIR.tiff")
 plot_fun(df, "ASMR", "SDI_ASMR.jpg")
-plot_fun(df, "ASMR", "SDI_ASMR.tif")
+plot_fun(df, "ASMR", "SDI_ASMR.tiff")
 plot_fun(df, "ASDR", "SDI_ASDR.jpg")
-plot_fun(df, "ASDR", "SDI_ASDR.tif")
+plot_fun(df, "ASDR", "SDI_ASDR.tiff")
 
 cat("Done!\n")
 
