@@ -45,7 +45,7 @@ fix_country_names <- function(df){
   return(df)
 }
 
-VI <- read.csv('map2023.csv', header = TRUE, fileEncoding = "UTF-8")
+VI <- read.xlsx('map2023.xlsx')
 
 VI_65plus <- VI %>%
   filter(age_name %in% c("65-69 years","70-74 years","75-79 years","80+ years")) %>%
@@ -118,22 +118,22 @@ p_dalys <- ggplot() +
   geom_polygon(data=total_dalys, aes(long,lat,group=group,fill=val2), color="black", linewidth=0.2) +
   scale_fill_brewer(palette="Purples", na.value = "white") +
   theme_void() +
-  labs(fill="DALYs")
+  labs(fill="DALYs (disability-adjusted life years)")
 
 write.xlsx(dalys, "output_one/2023_65plus_DALYs.xlsx", row.Names=FALSE, fileEncoding = "UTF-8")
 
 combined <- p_inc + p_dea + p_dalys +
   plot_layout(ncol = 1) +    
-  plot_annotation(tag_levels = 'A') &
+  plot_annotation(tag_levels = 'a') &
   theme(plot.tag = element_text(size = 18, face = "bold"))
 
 print(combined)
 ggsave("output_one/2023_65plus_combined.jpg", combined, width=12, height=20, dpi=300)
-ggsave("output_one/2023_65plus_combined.tif", combined, width=12, height=20, dpi=300)
+ggsave("output_one/2023_65plus_combined.tiff", combined, width=12, height=20, dpi=300)
 
 cat("All done. \n")
 cat("list：\n")
-cat("1. 2023_65plus_combined.jpg / 2023_65plus_combined.tif\n")
+cat("1. 2023_65plus_combined.jpg / 2023_65plus_combined.tiff\n")
 cat("2. 2023_65plus_Incidence.xlsx \n")
 cat("3. 2023_65plus_Deaths.xlsx \n")
 cat("4. 2023_65plus_DALYs.xlsx \n")
