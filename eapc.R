@@ -5,6 +5,7 @@
 library(tidyverse)
 library(readr)
 library(writexl)
+library(openxlsx)
 
 setwd("E:\\gbd\\vid\\eapc")
 
@@ -13,8 +14,8 @@ target_measure <- "Incidence"
 target_sex <- "Both"
 
 
-num_df <- read_csv("1990+2023+num.csv", show_col_types = FALSE)
-rate_df <- read_csv("1990+2023+rate.csv", show_col_types = FALSE)
+num_df <- read.xlsx("1990+2023+num.xlsx")
+rate_df <- read.xlsx("1990+2023+rate.xlsx")
 
 numI  <- num_df %>% filter(measure_name == target_measure)
 rateI <- rate_df %>% filter(measure_name == target_measure)
@@ -187,6 +188,7 @@ cat("\nDone! File saved to:", output_path, "\n")
 library(tidyverse)
 library(readr)
 library(writexl)
+library(openxlsx)
 
 setwd("E:\\gbd\\vid\\eapc")
 
@@ -195,8 +197,8 @@ target_measure <- "Deaths"
 target_sex <- "Both"
 
 
-num_df <- read_csv("1990+2023+num.csv", show_col_types = FALSE)
-rate_df <- read_csv("1990+2023+rate.csv", show_col_types = FALSE)
+num_df <- read.xlsx("1990+2023+num.xlsx")
+rate_df <- read.xlsx("1990+2023+rate.xlsx")
 
 numD  <- num_df %>% filter(measure_name == target_measure)
 rateD <- rate_df %>% filter(measure_name == target_measure)
@@ -366,10 +368,11 @@ cat("\nDone! File saved to:", output_path, "\n")
 # EAPC of ASDR
 
 
-install.packages(c("tidyverse", "readr", "writexl"))
+# install.packages(c("tidyverse", "readr", "writexl"))
 library(tidyverse)
 library(readr)
 library(writexl)
+library(openxlsx)
 
 setwd("E:\\gbd\\vid\\eapc")
 
@@ -378,8 +381,8 @@ target_measure <- "DALYs (Disability-Adjusted Life Years)"
 target_sex <- "Both"
 
 
-num_df <- read_csv("1990+2023+num.csv", show_col_types = FALSE)
-rate_df <- read_csv("1990+2023+rate.csv", show_col_types = FALSE)
+num_df <- read.xlsx("1990+2023+num.xlsx")
+rate_df <- read.xlsx("1990+2023+rate.xlsx")
 
 
 numDA <- num_df %>% filter(measure_name == target_measure)
