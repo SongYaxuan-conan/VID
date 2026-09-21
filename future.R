@@ -1,9 +1,10 @@
 options(repos = c(CRAN="https://mirrors.aliyun.com/CRAN/"))
 library(tidyverse)
 library(writexl)
+library(openxlsx)
 
 setwd("E:\\gbd\\vid\\future")
-df <- read.csv("future.csv") %>%
+df <- read.xlsx("future.xlsx") %>%
   filter(location_name == "Global", metric_name == "Rate")
 
 
@@ -105,6 +106,6 @@ p <- ggplot(plot_data, aes(x = year)) +
   theme(panel.grid = element_blank())
 
 ggsave("Prediction_2050.jpg", plot = p, width = 13, height = 10, dpi = 300)
-cat("Plot saved: Prediction_2050.jpg\n")
-ggsave("Prediction_2050.tif", plot = p, width = 13, height = 10, dpi = 300)
-cat("Plot saved: Prediction_2050.tif\n")
+cat("Plot saved: Prediction_2050.jpg \n")
+ggsave("Prediction_2050.tiff", plot = p, width = 13, height = 10, dpi = 300)
+cat("Plot saved: Prediction_2050.tiff \n")
