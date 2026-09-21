@@ -2,10 +2,11 @@ library(ggplot2)
 library(dplyr)
 library(patchwork)
 library(scales)
+library(openxlsx)
 
 
-df_num <- read.csv("E:\\gbd\\vid\\gender\\1990+2023+num.csv", stringsAsFactors=FALSE)
-df_rate <- read.csv("E:\\gbd\\vid\\gender\\1990+2023+rate.csv", stringsAsFactors=FALSE)
+df_num <- read.xlsx("E:\\gbd\\vid\\gender\\1990+2023+num.xlsx")
+df_rate <- read.xlsx("E:\\gbd\\vid\\gender\\1990+2023+rate.xlsx")
 
 age_order <- c("65-69 years", "70-74 years", "75-79 years", "80+ years")
 scale_factor <- 1000
@@ -106,7 +107,7 @@ p3 <- plot_gbd("DALYs (Disability-Adjusted Life Years)",
 
 combined <- p1 / p2 / p3 +
   plot_layout(guides = "collect") +
-  plot_annotation(tag_levels = "A") &
+  plot_annotation(tag_levels = "a") &
   theme(
     legend.position = "top",
     legend.box = "horizontal",
@@ -121,7 +122,7 @@ ggsave(
   width = 10, height = 18, dpi = 300
 )
 ggsave(
-  filename = "E:\\gbd\\vid\\gender\\gender.tif",
+  filename = "E:\\gbd\\vid\\gender\\gender.tiff",
   plot = combined,
   width = 10, height = 18, dpi = 300
 )
