@@ -3,9 +3,10 @@ library(ggplot2)
 library(scales)
 library(ggsci)
 library(patchwork)
+library(openxlsx)
 
 
-df <- read.csv("E:\\gbd\\vid\\asir\\65+rate.csv", stringsAsFactors = FALSE)
+df <- read.xlsx("E:\\gbd\\vid\\asir\\65+rate.xlsx")
 
 common_theme <- theme_classic() +
   theme(
@@ -30,7 +31,7 @@ p_asir <- df %>%
   ggplot(aes(x = year, group = sex_name)) +
   geom_ribbon(aes(ymin = lower, ymax = upper, fill = sex_name), alpha = 0.15) +
   geom_line(aes(y = val, color = sex_name, linetype = sex_name), linewidth = 1) +
-  labs(title = "A", x = "Year", y = "ASIR per 100,000") +  
+  labs(title = "a", x = "Year", y = "ASIR per 100,000") +  
   scale_x_continuous(breaks = seq(1990, 2023, 5)) +
   scale_color_lancet() + scale_fill_lancet() +
   common_theme
@@ -48,7 +49,7 @@ p_asmr <- df %>%
   ggplot(aes(x = year, group = sex_name)) +
   geom_ribbon(aes(ymin = lower, ymax = upper, fill = sex_name), alpha = 0.15) +
   geom_line(aes(y = val, color = sex_name, linetype = sex_name), linewidth = 1) +
-  labs(title = "B", x = "Year", y = "ASMR per 100,000") +  
+  labs(title = "b", x = "Year", y = "ASMR per 100,000") +  
   scale_x_continuous(breaks = seq(1990, 2023, 5)) +
   scale_color_lancet() + scale_fill_lancet() +
   common_theme
@@ -66,7 +67,7 @@ p_asdr <- df %>%
   ggplot(aes(x = year, group = sex_name)) +
   geom_ribbon(aes(ymin = lower, ymax = upper, fill = sex_name), alpha = 0.15) +
   geom_line(aes(y = val, color = sex_name, linetype = sex_name), linewidth = 1) +
-  labs(title = "C", x = "Year", y = "ASDR per 100,000") +  # 标题改为 C
+  labs(title = "c", x = "Year", y = "ASDR per 100,000") +  
   scale_x_continuous(breaks = seq(1990, 2023, 5)) +
   scale_color_lancet() + scale_fill_lancet() +
   common_theme
@@ -85,5 +86,5 @@ print(final_plot)
 
 
 ggsave("E:\\gbd\\vid\\asir\\65+asr.jpg", final_plot, width=18, height=6, dpi=300)
-ggsave("E:\\gbd\\vid\\asir\\65+asr.tif", final_plot, width=18, height=6, dpi=300)
+ggsave("E:\\gbd\\vid\\asir\\65+asr.tiff", final_plot, width=18, height=6, dpi=300)
 
