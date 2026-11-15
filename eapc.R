@@ -1,542 +1,214 @@
-# =====================================================
-# EAPC of ASIR
-
-
 library(tidyverse)
-library(readr)
+library(readxl)
 library(writexl)
 library(openxlsx)
 
-setwd("E:\\gbd\\vid\\eapc")
 
+INPUT_DIR   <- "E:\\gbd\\vid\\eapc"
+NUM_FILE    <- file.path(INPUT_DIR, "1990+2023+num.xlsx")
+RATE_FILE   <- file.path(INPUT_DIR, "1990+2023+rate.xlsx")
+OUTPUT_FILE <- file.path(INPUT_DIR, "EAPC_ASR_65plus.xlsx")
 
-target_measure <- "Incidence"
-target_sex <- "Both"
+START_YEAR <- 1990
+END_YEAR   <- 2023
+Z_VALUE    <- qnorm(0.975)                  
 
+STUDY_AGES <- c("65-69 years", "70-74 years", "75-79 years", "80+ years")
 
-num_df <- read.xlsx("1990+2023+num.xlsx")
-rate_df <- read.xlsx("1990+2023+rate.xlsx")
 
-numI  <- num_df %>% filter(measure_name == target_measure)
-rateI <- rate_df %>% filter(measure_name == target_measure)
+STD_POP <- "who"
+WHO_WEIGHTS <- tibble(age_name = STUDY_AGES, w = c(2.96, 2.21, 1.52, 1.51))
+GBD_WEIGHTS <- tibble(age_name = STUDY_AGES, w = c(3.01, 2.10, 1.36, 1.17))
+WEIGHTS <- if (STD_POP == "gbd") GBD_WEIGHTS else WHO_WEIGHTS
 
-
-calc_eapc <- function(year_vec, val_vec) {
-  keep <- !is.na(year_vec) & !is.na(val_vec) & val_vec > 0
-  y <- year_vec[keep]
-  v <- val_vec[keep]
-
-  if (length(y) < 3) {
-    return(tibble(
-      EAPC = NA_real_,
-      EAPC_lower = NA_real_,
-      EAPC_upper = NA_real_
-    ))
-  }
-
-  fit <- tryCatch(
-    lm(log(v) ~ y),
-    error = function(e) NULL
-  )
-
-  if (is.null(fit)) {
-    return(tibble(
-      EAPC = NA_real_,
-      EAPC_lower = NA_real_,
-      EAPC_upper = NA_real_
-    ))
-  }
-
-  beta <- coef(fit)[2]
-  se   <- summary(fit)$coefficients[2, "Std. Error"]
-
-  eapc  <- 100 * (exp(beta) - 1)
-  lower <- 100 * (exp(beta - 1.96 * se) - 1)
-  upper <- 100 * (exp(beta + 1.96 * se) - 1)
-
-  tibble(
-    EAPC = eapc,
-    EAPC_lower = lower,
-    EAPC_upper = upper
-  )
-}
-
-
-summarize_row <- function(df_num, df_rate, label, sex = "Both", age = NULL) {
-
-  # -- Incidence cases --
-  d_num <- df_num %>% filter(sex_name == sex)
-  if (!is.null(age)) d_num <- d_num %>% filter(age_name == age)
-
-  n90 <- d_num %>% filter(year == 1990) %>%
-    summarise(v = sum(val, na.rm = TRUE),
-              l = sum(lower, na.rm = TRUE),
-              u = sum(upper, na.rm = TRUE))
-  n23 <- d_num %>% filter(year == 2023) %>%
-    summarise(v = sum(val, na.rm = TRUE),
-              l = sum(lower, na.rm = TRUE),
-              u = sum(upper, na.rm = TRUE))
-
-  # -- ASIR --
-  d_rate <- df_rate %>% filter(sex_name == sex)
-  if (!is.null(age)) d_rate <- d_rate %>% filter(age_name == age)
-
-  r90 <- d_rate %>% filter(year == 1990) %>%
-    summarise(v = mean(val, na.rm = TRUE),
-              l = mean(lower, na.rm = TRUE),
-              u = mean(upper, na.rm = TRUE))
-  r23 <- d_rate %>% filter(year == 2023) %>%
-    summarise(v = mean(val, na.rm = TRUE),
-              l = mean(lower, na.rm = TRUE),
-              u = mean(upper, na.rm = TRUE))
-
-  # -- EAPC --
-  eapc_data <- d_rate %>%
-    group_by(year) %>%
-    summarise(v = mean(val, na.rm = TRUE), .groups = "drop")
-
-  er <- calc_eapc(eapc_data$year, eapc_data$v)
-
-  # -- Change rates --
-  num_chg  <- if (n90$v != 0) (n23$v - n90$v) / n90$v * 100 else NA_real_
-  rate_chg <- if (r90$v != 0) (r23$v - r90$v) / r90$v * 100 else NA_real_
-
-  num_chg_str  <- if (is.na(num_chg))  "NA" else sprintf("%.2f%%", num_chg)
-  rate_chg_str <- if (is.na(rate_chg)) "NA" else sprintf("%.2f%%", rate_chg)
-
-  if (is.na(er$EAPC)) {
-    eapc_str <- "NA"
-  } else {
-    eapc_str <- sprintf("%.2f%% (%.2f%% - %.2f%%)",
-                        er$EAPC, er$EAPC_lower, er$EAPC_upper)
-  }
-
-  
-  fmt <- function(val_df) {
-    sprintf("%.2f (%.2f - %.2f)", val_df$v, val_df$l, val_df$u)
-  }
-
-  tibble(
-    location = label,
-
-    `1990 Incidence Cases`           = fmt(n90),
-    `1990 ASIR`                      = fmt(r90),
-    `2023 Incidence Cases`           = fmt(n23),
-    `2023 ASIR`                      = fmt(r23),
-
-    `Incidence Cases Change Rate (%)` = num_chg_str,
-    `ASIR Change Rate (%)`            = rate_chg_str,
-    `EAPC of ASIR (95%CI)`           = eapc_str
-  )
-}
-
-
-all_locs  <- unique(numI$location_name) %>% sort()
-sdi_locs  <- all_locs[grep("SDI", all_locs)]
-global_loc <- "Global"
-region_locs <- setdiff(all_locs, c(sdi_locs, global_loc))
-age_groups  <- unique(rateI$age_name) %>% sort()
-
-rows <- list()
-
-# 21 regions + Global
-for (loc in region_locs) {
-  rows[[length(rows) + 1]] <- summarize_row(
-    numI %>% filter(location_name == loc),
-    rateI %>% filter(location_name == loc),
-    label = loc)
-}
-rows[[length(rows) + 1]] <- summarize_row(
-  numI %>% filter(location_name == global_loc),
-  rateI %>% filter(location_name == global_loc),
-  label = global_loc)
-
-# 5 SDI
-for (loc in sdi_locs) {
-  rows[[length(rows) + 1]] <- summarize_row(
-    numI %>% filter(location_name == loc),
-    rateI %>% filter(location_name == loc),
-    label = loc)
-}
-
-# Male / Female
-rows[[length(rows) + 1]] <- summarize_row(numI, rateI, label = "Male",   sex = "Male")
-rows[[length(rows) + 1]] <- summarize_row(numI, rateI, label = "Female", sex = "Female")
-
-# 4 age groups
-for (age in age_groups) {
-  rows[[length(rows) + 1]] <- summarize_row(numI, rateI, label = age, age = age)
-}
-
-
-final_table <- bind_rows(rows)
-
-cat("Total rows:", nrow(final_table), "\n")
-print(final_table)
-
-output_path <- "E:\\gbd\\vid\\eapc\\incidence_ASIR_analysis_result.xlsx"
-write_xlsx(final_table, output_path)
-
-cat("\nDone! File saved to:", output_path, "\n")
-
-
-
-# =====================================================
-# EAPC of ASMR
-
-
-library(tidyverse)
-library(readr)
-library(writexl)
-library(openxlsx)
-
-setwd("E:\\gbd\\vid\\eapc")
-
-
-target_measure <- "Deaths"
-target_sex <- "Both"
-
-
-num_df <- read.xlsx("1990+2023+num.xlsx")
-rate_df <- read.xlsx("1990+2023+rate.xlsx")
-
-numD  <- num_df %>% filter(measure_name == target_measure)
-rateD <- rate_df %>% filter(measure_name == target_measure)
-
-
-calc_eapc <- function(year_vec, val_vec) {
-  keep <- !is.na(year_vec) & !is.na(val_vec) & val_vec > 0
-  y <- year_vec[keep]
-  v <- val_vec[keep]
-
-  if (length(y) < 3) {
-    return(tibble(
-      EAPC = NA_real_,
-      EAPC_lower = NA_real_,
-      EAPC_upper = NA_real_
-    ))
-  }
-
-  fit <- tryCatch(
-    lm(log(v) ~ y),
-    error = function(e) NULL
-  )
-
-  if (is.null(fit)) {
-    return(tibble(
-      EAPC = NA_real_,
-      EAPC_lower = NA_real_,
-      EAPC_upper = NA_real_
-    ))
-  }
-
-  beta <- coef(fit)[2]
-  se   <- summary(fit)$coefficients[2, "Std. Error"]
-
-  eapc  <- 100 * (exp(beta) - 1)
-  lower <- 100 * (exp(beta - 1.96 * se) - 1)
-  upper <- 100 * (exp(beta + 1.96 * se) - 1)
-
-  tibble(
-    EAPC = eapc,
-    EAPC_lower = lower,
-    EAPC_upper = upper
-  )
-}
-
-
-summarize_row <- function(df_num, df_rate, label, sex = "Both", age = NULL) {
-
-  # -- Deaths cases (val / lower / upper) --
-  d_num <- df_num %>% filter(sex_name == sex)
-  if (!is.null(age)) d_num <- d_num %>% filter(age_name == age)
-
-  n90 <- d_num %>% filter(year == 1990) %>%
-    summarise(v = sum(val, na.rm = TRUE),
-              l = sum(lower, na.rm = TRUE),
-              u = sum(upper, na.rm = TRUE))
-  n23 <- d_num %>% filter(year == 2023) %>%
-    summarise(v = sum(val, na.rm = TRUE),
-              l = sum(lower, na.rm = TRUE),
-              u = sum(upper, na.rm = TRUE))
-
-  # -- ASMR (val / lower / upper) --
-  d_rate <- df_rate %>% filter(sex_name == sex)
-  if (!is.null(age)) d_rate <- d_rate %>% filter(age_name == age)
-
-  r90 <- d_rate %>% filter(year == 1990) %>%
-    summarise(v = mean(val, na.rm = TRUE),
-              l = mean(lower, na.rm = TRUE),
-              u = mean(upper, na.rm = TRUE))
-  r23 <- d_rate %>% filter(year == 2023) %>%
-    summarise(v = mean(val, na.rm = TRUE),
-              l = mean(lower, na.rm = TRUE),
-              u = mean(upper, na.rm = TRUE))
-
-  # -- EAPC --
-  eapc_data <- d_rate %>%
-    group_by(year) %>%
-    summarise(v = mean(val, na.rm = TRUE), .groups = "drop")
-
-  er <- calc_eapc(eapc_data$year, eapc_data$v)
-
-  # -- Change rates --
-  num_chg  <- if (n90$v != 0) (n23$v - n90$v) / n90$v * 100 else NA_real_
-  rate_chg <- if (r90$v != 0) (r23$v - r90$v) / r90$v * 100 else NA_real_
-
-  num_chg_str  <- if (is.na(num_chg))  "NA" else sprintf("%.2f%%", num_chg)
-  rate_chg_str <- if (is.na(rate_chg)) "NA" else sprintf("%.2f%%", rate_chg)
-
-  if (is.na(er$EAPC)) {
-    eapc_str <- "NA"
-  } else {
-    eapc_str <- sprintf("%.2f%% (%.2f%% - %.2f%%)",
-                        er$EAPC, er$EAPC_lower, er$EAPC_upper)
-  }
-
-  # -- 关键: 拼成 "value (lower - upper)" --
-  fmt <- function(d) {
-    sprintf("%.2f (%.2f - %.2f)", d$v, d$l, d$u)
-  }
-
-  tibble(
-    location = label,
-
-    `1990 Deaths Cases`             = fmt(n90),
-    `1990 ASMR`                      = fmt(r90),
-    `2023 Deaths Cases`             = fmt(n23),
-    `2023 ASMR`                      = fmt(r23),
-
-    `Deaths Cases Change Rate (%)`   = num_chg_str,
-    `ASMR Change Rate (%)`            = rate_chg_str,
-    `EAPC of ASMR (95%CI)`           = eapc_str
-  )
-}
-
-
-all_locs  <- unique(numD$location_name) %>% sort()
-sdi_locs  <- all_locs[grep("SDI", all_locs)]
-global_loc <- "Global"
-region_locs <- setdiff(all_locs, c(sdi_locs, global_loc))
-age_groups  <- unique(rateD$age_name) %>% sort()
-
-rows <- list()
-
-# 21 regions + Global
-for (loc in region_locs) {
-  rows[[length(rows) + 1]] <- summarize_row(
-    numD %>% filter(location_name == loc),
-    rateD %>% filter(location_name == loc),
-    label = loc)
-}
-rows[[length(rows) + 1]] <- summarize_row(
-  numD %>% filter(location_name == global_loc),
-  rateD %>% filter(location_name == global_loc),
-  label = global_loc)
-
-# 5 SDI
-for (loc in sdi_locs) {
-  rows[[length(rows) + 1]] <- summarize_row(
-    numD %>% filter(location_name == loc),
-    rateD %>% filter(location_name == loc),
-    label = loc)
-}
-
-# Male / Female
-rows[[length(rows) + 1]] <- summarize_row(numD, rateD, label = "Male",   sex = "Male")
-rows[[length(rows) + 1]] <- summarize_row(numD, rateD, label = "Female", sex = "Female")
-
-# 4 age groups
-for (age in age_groups) {
-  rows[[length(rows) + 1]] <- summarize_row(numD, rateD, label = age, age = age)
-}
-
-
-final_table <- bind_rows(rows)
-
-cat("Total rows:", nrow(final_table), "\n")
-print(final_table)
-
-output_path <- "E:\\gbd\\vid\\eapc\\deaths_ASMR_analysis_result.xlsx"
-write_xlsx(final_table, output_path)
-
-cat("\nDone! File saved to:", output_path, "\n")
-
-
-
-# =====================================================
-# EAPC of ASDR
-
-
-# install.packages(c("tidyverse", "readr", "writexl"))
-library(tidyverse)
-library(readr)
-library(writexl)
-library(openxlsx)
-
-setwd("E:\\gbd\\vid\\eapc")
-
-
-target_measure <- "DALYs (Disability-Adjusted Life Years)"
-target_sex <- "Both"
-
-
-num_df <- read.xlsx("1990+2023+num.xlsx")
-rate_df <- read.xlsx("1990+2023+rate.xlsx")
-
-
-numDA <- num_df %>% filter(measure_name == target_measure)
-rateDA <- rate_df %>% filter(measure_name == target_measure)
-
-
-calc_eapc <- function(year_vec, val_vec) {
-  keep <- !is.na(year_vec) & !is.na(val_vec) & val_vec > 0
-  y <- year_vec[keep]
-  v <- val_vec[keep]
-
-  if (length(y) < 3) {
-    return(tibble(
-      EAPC = NA_real_,
-      EAPC_lower = NA_real_,
-      EAPC_upper = NA_real_
-    ))
-  }
-
-  fit <- tryCatch(
-    lm(log(v) ~ y),
-    error = function(e) NULL
-  )
-
-  if (is.null(fit)) {
-    return(tibble(
-      EAPC = NA_real_,
-      EAPC_lower = NA_real_,
-      EAPC_upper = NA_real_
-    ))
-  }
-
-  beta <- coef(fit)[2]
-  se <- summary(fit)$coefficients[2, "Std. Error"]
-
-  eapc  <- 100 * (exp(beta) - 1)
-  lower <- 100 * (exp(beta - 1.96 * se) - 1)
-  upper <- 100 * (exp(beta + 1.96 * se) - 1)
-
-  tibble(
-    EAPC = eapc,
-    EAPC_lower = lower,
-    EAPC_upper = upper
-  )
-}
-
-
-summarize_row <- function(df_num, df_rate, label, sex = "Both", age = NULL) {
-  # DALYs cases
-  d_num <- df_num %>% filter(sex_name == sex)
-  if (!is.null(age)) d_num <- d_num %>% filter(age_name == age)
-
-  num_1990 <- d_num %>% filter(year == 1990) %>% pull(val) %>% sum(na.rm = TRUE)
-  num_2023 <- d_num %>% filter(year == 2023) %>% pull(val) %>% sum(na.rm = TRUE)
-
-  # ASDR: mean of age-group rates (proxy when Age-standardized not downloaded)
-  d_rate <- df_rate %>% filter(sex_name == sex)
-  if (!is.null(age)) d_rate <- d_rate %>% filter(age_name == age)
-
-  rate_1990 <- d_rate %>% filter(year == 1990) %>% pull(val) %>% mean(na.rm = TRUE)
-  rate_2023 <- d_rate %>% filter(year == 2023) %>% pull(val) %>% mean(na.rm = TRUE)
-
-  # EAPC from full time series (group by year, mean across age groups)
-  eapc_data <- d_rate %>%
-    group_by(year) %>%
-    summarise(v = mean(val, na.rm = TRUE), .groups = "drop")
-
-  eapc_result <- calc_eapc(eapc_data$year, eapc_data$v)
-
-  # Change rates (as percentages, formatted to 2 decimal places)
-  num_chg <- if (num_1990 != 0) (num_2023 - num_1990) / num_1990 * 100 else NA_real_
-  rate_chg <- if (rate_1990 != 0) (rate_2023 - rate_1990) / rate_1990 * 100 else NA_real_
-
-  num_chg_str  <- if (is.na(num_chg))  "NA" else sprintf("%.2f%%", num_chg)
-  rate_chg_str <- if (is.na(rate_chg)) "NA" else sprintf("%.2f%%", rate_chg)
-
-  # Format EAPC string
-  if (is.na(eapc_result$EAPC)) {
-    eapc_str <- "NA"
-  } else {
-    eapc_str <- sprintf(
-      "%.2f%% (%.2f%% - %.2f%%)",
-      eapc_result$EAPC,
-      eapc_result$EAPC_lower,
-      eapc_result$EAPC_upper
-    )
-  }
-
-  tibble(
-    location = label,
-    `1990 DALYs Cases` = round(num_1990, 2),
-    `1990 ASDR` = round(rate_1990, 2),
-    `2023 DALYs Cases` = round(num_2023, 2),
-    `2023 ASDR` = round(rate_2023, 2),
-    `DALYs Cases Change Rate (%)` = num_chg_str,
-    `ASDR Change Rate (%)` = rate_chg_str,
-    `EAPC of ASDR (95%CI)` = eapc_str
-  )
-}
-
-
-
-# Identify location groups
-all_locs <- unique(numDA$location_name) %>% sort()
-sdi_locs <- all_locs[grep("SDI", all_locs)]
-global_loc <- "Global"
-region_locs <- setdiff(all_locs, c(sdi_locs, global_loc))
-age_groups <- unique(rateDA$age_name) %>% sort()
-
-rows <- list()
-
-# 6a. 21 regions + Global (Both, all ages)
-for (loc in region_locs) {
-  rows[[length(rows) + 1]] <- summarize_row(
-    numDA %>% filter(location_name == loc),
-    rateDA %>% filter(location_name == loc),
-    label = loc
-  )
-}
-
-rows[[length(rows) + 1]] <- summarize_row(
-  numDA %>% filter(location_name == global_loc),
-  rateDA %>% filter(location_name == global_loc),
-  label = global_loc
+MEASURES <- list(
+  list(name = "Incidence", count = "Incidence Cases", rate = "ASIR", sheet = "Incidence"),
+  list(name = "Deaths",    count = "Deaths",          rate = "ASMR", sheet = "Deaths"),
+  list(name = "DALYs (Disability-Adjusted Life Years)",
+                           count = "DALYs",           rate = "ASDR", sheet = "DALYs")
 )
 
-# 6b. 5 SDI (Both, all ages)
-for (loc in sdi_locs) {
-  rows[[length(rows) + 1]] <- summarize_row(
-    numDA %>% filter(location_name == loc),
-    rateDA %>% filter(location_name == loc),
-    label = loc
+OUT_COLS <- function(cnt, rt) {
+  c("location",
+    paste0("1990 ", cnt), paste0("1990 ", rt),
+    paste0("2023 ", cnt), paste0("2023 ", rt),
+    paste0(cnt, " Change Rate (%)"),
+    paste0(rt, " Change Rate (%)"),
+    paste0("EAPC of ", rt, " (95% CI)"))
+}
+
+
+COLS <- c("measure_name", "location_name", "sex_name", "age_name",
+          "year", "val", "lower", "upper")
+KEY  <- c("location_name", "sex_name", "age_name", "year")
+
+num_all  <- read.xlsx(NUM_FILE)
+rate_all <- read.xlsx(RATE_FILE)
+stopifnot(nrow(num_all) > 0, nrow(rate_all) > 0)
+
+num_all  <- num_all  %>% filter(metric_name == "Number") %>% select(all_of(COLS))
+rate_all <- rate_all %>% filter(metric_name == "Rate")   %>% select(all_of(COLS))
+message("Number rows: ", nrow(num_all), " | Rate rows: ", nrow(rate_all))
+
+
+sum_cases <- function(d) {
+  d <- d %>% filter(age_name %in% STUDY_AGES)
+  tibble(v = sum(d$val,   na.rm = TRUE),
+         l = sum(d$lower, na.rm = TRUE),
+         u = sum(d$upper, na.rm = TRUE))
+}
+
+one_rate <- function(d) {
+  d <- d %>% left_join(WEIGHTS, by = "age_name") %>% filter(!is.na(val), !is.na(w))
+  if (nrow(d) == 0) return(tibble(v = NA_real_, l = NA_real_, u = NA_real_))
+  sw <- sum(d$w)
+  tibble(v = sum(d$w * d$val)   / sw,
+         l = sum(d$w * d$lower) / sw,
+         u = sum(d$w * d$upper) / sw)
+}
+
+calc_eapc <- function(year_vec, val_vec) {
+  keep <- !is.na(year_vec) & !is.na(val_vec) & val_vec > 0
+  y <- year_vec[keep]; v <- val_vec[keep]
+
+  if (length(y) < 3) {
+    return(tibble(EAPC = NA_real_, EAPC_lower = NA_real_, EAPC_upper = NA_real_))
+  }
+  fit <- tryCatch(lm(log(v) ~ y), error = function(e) NULL)
+  if (is.null(fit)) {
+    return(tibble(EAPC = NA_real_, EAPC_lower = NA_real_, EAPC_upper = NA_real_))
+  }
+  beta <- coef(fit)[2]
+  se   <- summary(fit)$coefficients[2, "Std. Error"]
+  if (is.na(beta) || is.na(se)) {
+    return(tibble(EAPC = NA_real_, EAPC_lower = NA_real_, EAPC_upper = NA_real_))
+  }
+  tibble(EAPC       = 100 * (exp(beta) - 1),
+         EAPC_lower = 100 * (exp(beta - Z_VALUE * se) - 1),
+         EAPC_upper = 100 * (exp(beta + Z_VALUE * se) - 1))
+}
+
+fmt <- function(x) sprintf("%.2f (%.2f - %.2f)", x$v, x$l, x$u)
+
+summarize_row <- function(df_num, df_rate, label, sex = "Both", age = NULL) {
+
+  d_num  <- df_num  %>% filter(sex_name == sex)
+  d_rate <- df_rate %>% filter(sex_name == sex)
+  if (!is.null(age)) {
+    d_num  <- d_num  %>% filter(age_name == age)
+    d_rate <- d_rate %>% filter(age_name == age)
+  }
+
+  yr <- sort(unique(d_rate$year))
+  if (length(yr) < 3) stop("EAPC needs at least 3 years for: ", label)
+  if (length(yr) != (END_YEAR - START_YEAR + 1)) {
+    message("  [warn] ", label, ": ", length(yr), " years instead of ",
+            END_YEAR - START_YEAR + 1)
+  }
+
+  n90 <- sum_cases(d_num %>% filter(year == START_YEAR))
+  n23 <- sum_cases(d_num %>% filter(year == END_YEAR))
+
+  r90 <- one_rate(d_rate %>% filter(year == START_YEAR))
+  r23 <- one_rate(d_rate %>% filter(year == END_YEAR))
+
+  v_series <- sapply(yr, function(y) one_rate(d_rate %>% filter(year == y))$v)
+  er <- calc_eapc(yr, v_series)
+
+  num_chg  <- if (!is.na(n90$v) && n90$v != 0) (n23$v - n90$v) / n90$v * 100 else NA_real_
+  rate_chg <- if (!is.na(r90$v) && r90$v != 0) (r23$v - r90$v) / r90$v * 100 else NA_real_
+
+  tibble(
+    location = label,
+    fmt(n90), fmt(r90), fmt(n23), fmt(r23),
+    if (is.na(num_chg))  "NA" else sprintf("%.2f%%", num_chg),
+    if (is.na(rate_chg)) "NA" else sprintf("%.2f%%", rate_chg),
+    if (is.na(er$EAPC))  "NA" else
+      sprintf("%.2f%% (%.2f%% - %.2f%%)", er$EAPC, er$EAPC_lower, er$EAPC_upper)
   )
 }
 
-# 6c. Male summary (all locations, all ages)
-rows[[length(rows) + 1]] <- summarize_row(numDA, rateDA, label = "Male", sex = "Male")
 
-# 6d. Female summary (all locations, all ages)
-rows[[length(rows) + 1]] <- summarize_row(numDA, rateDA, label = "Female", sex = "Female")
+run_measure <- function(spec) {
 
-# 6e. 4 age groups (all locations, Both)
-for (age in age_groups) {
-  rows[[length(rows) + 1]] <- summarize_row(numDA, rateDA, label = age, age = age)
+  numI  <- num_all  %>% filter(measure_name == spec$name) %>% select(-measure_name)
+  rateI <- rate_all %>% filter(measure_name == spec$name) %>% select(-measure_name)
+
+  if (nrow(numI) == 0 || nrow(rateI) == 0) {
+    message("[skip] ", spec$sheet, " - no rows for measure '", spec$name, "'")
+    return(NULL)
+  }
+  message("[run ] ", spec$sheet, " - ", nrow(numI), " count rows / ",
+          nrow(rateI), " rate rows")
+
+  stopifnot(!any(duplicated(numI[,  KEY])))
+  stopifnot(!any(duplicated(rateI[, KEY])))
+
+  numI  <- numI  %>% filter(age_name %in% STUDY_AGES)
+  rateI <- rateI %>% filter(age_name %in% STUDY_AGES)
+
+  if (!("Both" %in% unique(numI$sex_name))) {
+    message("  [warn] no 'Both' sex rows - the 31 sex-aggregated rows would be NA")
+  }
+
+  all_locs    <- sort(unique(numI$location_name))
+  sdi_locs    <- sort(grep("SDI", all_locs, value = TRUE))
+  global_loc  <- "Global"
+  region_locs <- setdiff(all_locs, c(sdi_locs, global_loc))
+
+  numG  <- numI  %>% filter(location_name == global_loc)
+  rateG <- rateI %>% filter(location_name == global_loc)
+
+  rows <- list()
+  for (loc in region_locs) {                      
+    rows[[length(rows) + 1]] <- summarize_row(
+      numI %>% filter(location_name == loc),
+      rateI %>% filter(location_name == loc), label = loc)
+  }
+  rows[[length(rows) + 1]] <- summarize_row(numG, rateG, label = global_loc) 
+  for (loc in sdi_locs) {                         
+    rows[[length(rows) + 1]] <- summarize_row(
+      numI %>% filter(location_name == loc),
+      rateI %>% filter(location_name == loc), label = loc)
+  }
+  rows[[length(rows) + 1]] <- summarize_row(numG, rateG, label = "Male",   sex = "Male")
+  rows[[length(rows) + 1]] <- summarize_row(numG, rateG, label = "Female", sex = "Female")
+  for (age in STUDY_AGES) {                        
+    rows[[length(rows) + 1]] <- summarize_row(numG, rateG, label = age, age = age)
+  }
+
+  tab <- bind_rows(rows)
+  names(tab) <- OUT_COLS(spec$count, spec$rate)
+
+  cat("\n--- ", spec$sheet, " (", nrow(tab), " rows ) ---\n", sep = "")
+  print(as.data.frame(tab), row.names = FALSE)
+  tab
 }
 
 
-final_table <- bind_rows(rows)
+WRITE_COMBINED <- FALSE
 
-cat("Total rows:", nrow(final_table), "\n")
-print(final_table)
+results <- list()
+for (spec in MEASURES) {
+  t <- tryCatch(run_measure(spec),
+                error = function(e) { message("[fail] ", spec$sheet, ": ",
+                                              conditionMessage(e)); NULL })
+  if (!is.null(t)) {
+    results[[spec$sheet]] <- t
 
-output_path <- "E:\\gbd\\vid\\eapc\\dalys_ASDR_analysis_result.xlsx"
-write_xlsx(final_table, output_path)
+    out_path <- file.path(INPUT_DIR, paste0("EAPC_", spec$rate, "_65plus.xlsx"))
+    write.xlsx(t, file = out_path)
+    cat("\n>>> written: ", out_path, "  (", nrow(t), " rows x ", ncol(t), " cols )\n", sep = "")
+  }
+}
 
-cat("\nDone! File saved to:", output_path, "\n")
-cat("Rows: 21 regions + Global + 5 SDI + Male + Female + 4 age groups = 33\n")
+if (length(results) == 0) stop("No measure could be produced - check the input files.")
+
+if (WRITE_COMBINED) {
+  write.xlsx(results, file = OUTPUT_FILE)
+  cat("\n>>> combined workbook: ", OUTPUT_FILE, "\n", sep = "")
+}
+
+cat("\nDone! Files written to ", INPUT_DIR, "\n", sep = "")
+cat("Measures: ", paste(names(results), collapse = ", "), "\n")
+cat("Scope   : population aged 65+ | standard population: ", STD_POP, "\n", sep = "")
